@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+import math
 from pcbnew import *
 
 scale = 1000000 # conversion in micrometers (unit used by kicad)
@@ -37,7 +38,33 @@ for track in board.GetTracks():
     
 
 
-gcode += "( PADS )"
+gcode += "( PADS )\n"
+
+# x, y : center
+# d : diameter
+# f : feed rate
+# step : length of each line segment making the circle
+def circle(x, y, d, f, step = 0.1):
+    gcode = f"( circle )\nG00 X{x+d/2:.3f} Y{y:.3f}\nG01 Z0 F{f:.3f}\n"
+    n = math.floor(math.pi * d / step)
+    theta = 2 * step / d
+    for i in range(n):
+        px = x + d/2 * math.cos(i * theta)
+        py = y + d/2 * math.sin(i * theta)
+        gcode += f"G01 X{px:.3f} Y{py:.3f} F{f}\n"
+    gcode += f"G01 X{x+d/2:.3f} Y{y:.3f}\n"
+    return gcode
+
+def rectangle(xc, yc, sx, sy, angle, f):
+    gcode = "( rect )\n"
+    gcode += f"G00 X{xc + sx / 2 : .3f} Y{yc + sy / 2 : .3f}\n"
+    gcode += f"G01 Z0 F{f:.3f}\n"
+    gcode += f"G01 X{xc - sx / 2 : .3f} Y{yc + sy / 2 : .3f} F{f:.3f}\n"
+    gcode += f"G01 X{xc - sx / 2 : .3f} Y{yc - sy / 2 : .3f} F{f:.3f}\n"
+    gcode += f"G01 X{xc + sx / 2 : .3f} Y{yc - sy / 2 : .3f} F{f:.3f}\n"
+    gcode += f"G01 X{xc + sx / 2 : .3f} Y{yc + sy / 2 : .3f} F{f:.3f}\n"
+    gcode += "\n"
+    return gcode
 
 for pad in board.GetPads():
     xc, yc = pad.GetCenter()
@@ -50,36 +77,19 @@ for pad in board.GetPads():
     orientation = pad.GetOrientationDegrees()
     #print(f"orientation = {orientation}")
     if shape == PAD_SHAPE_CIRCLE:
-        radius = (sx - pen_diameter) / 2
-        gcode += "( circle )\n"
-        gcode += f"G00 X{xc+radius:.3f} Y{yc:.3f}\nG01 Z0 F{feed_rate:.3f}\n"
-        gcode += f"G03 X{xc:.3f} Y{yc+radius:.3f} R{radius:.3f} F{feed_rate:.3f}\n"
-        gcode += f"G03 X{xc-radius:.3f} Y{yc:.3f} R{radius:.3f} F{feed_rate:.3f}\n"
-        gcode += f"G03 X{xc:.3f} Y{yc-radius:.3f} R{radius:.3f} F{feed_rate:.3f}\n"
-        gcode += f"G03 X{xc+radius:.3f} Y{yc:.3f} R{radius:.3f} F{feed_rate:.3f}\n"
+        gcode += circle(xc, yc, sx - pen_diameter, feed_rate)
     elif shape == PAD_SHAPE_RECT:
-        gcode += "( rect )\n"
-        gcode += f"G00 X{xc + (sx - pen_diameter) / 2 : .3f} Y{yc + (sy - pen_diameter) / 2 : .3f}\n"
-        gcode += f"G01 Z0 F{feed_rate:.3f}\n"
-        gcode += f"G01 X{xc - (sx - pen_diameter) / 2 : .3f} Y{yc + (sy - pen_diameter) / 2 : .3f}\n"
-        gcode += f"G01 X{xc - (sx - pen_diameter) / 2 : .3f} Y{yc - (sy - pen_diameter) / 2 : .3f}\n"
-        gcode += f"G01 X{xc + (sx - pen_diameter) / 2 : .3f} Y{yc - (sy - pen_diameter) / 2 : .3f}\n"
-        gcode += f"G01 X{xc + (sx - pen_diameter) / 2 : .3f} Y{yc + (sy - pen_diameter) / 2 : .3f}\n"
+        gcode += rectangle(xc, yc, sx - pen_diameter, sy - pen_diameter, 0, feed_rate)
     elif shape == PAD_SHAPE_OVAL:
         gcode += "( oval )\n"
         if sx == sy:
-            radius = (sx - pen_diameter) / 2
-            gcode += f"G00 X{xc+radius:.3f} Y{yc:.3f}\nG01 Z0 F{feed_rate:.3f}\n"
-            gcode += f"G03 X{xc:.3f} Y{yc+radius:.3f} R{radius:.3f} F{feed_rate:.3f}\n"
-            gcode += f"G03 X{xc-radius:.3f} Y{yc:.3f} R{radius:.3f} F{feed_rate:.3f}\n"
-            gcode += f"G03 X{xc:.3f} Y{yc-radius:.3f} R{radius:.3f} F{feed_rate:.3f}\n"
-            gcode += f"G03 X{xc+radius:.3f} Y{yc:.3f} R{radius:.3f} F{feed_rate:.3f}\n"
+            gcode += circle(xc, yc, sx - pen_diameter, feed_rate)
         else:
             print("Warning: real ovals not suported (yet)", file = sys.stderr)
     else:
         print("Warning: unknown pad shape", file=sys.stderr)
         gcode += "( unknown pad shape )\n"
-    gcode += f"G00 Z{z_safe:.3f}\n"
+    gcode += f"G00 Z{z_safe:.3f}\n\n"
 
 
 print(gcode)
