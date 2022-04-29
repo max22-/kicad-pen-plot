@@ -14,6 +14,9 @@ class GCode:
     def rotate(self, angle):
         return self.transform(lambda p: (p[0] * math.cos(angle) - p[1] * math.sin(angle), p[0] * math.sin(angle) + p[1] * math.cos(angle)))
 
+    def flip_y(self):
+        return self.transform(lambda p: (p[0], -p[1]))
+
 
 class Sequence(GCode):
     def __init__(self, ops = []):
@@ -54,6 +57,8 @@ class G92(GCode):
 
     def run(self, tr, state):
         (x2, y2) = tr((self.x, self.y))
+        (_, _, z) = state["pos"]
+        state["pos"] = (x2, y2, z)
         x_str = "" if self.x is None else f"X{x2:.3f} "
         y_str = "" if self.y is None else f"Y{y2:.3f} "
         z_str = "" if self.z is None else f"X{self.z:.3f} "
@@ -146,6 +151,17 @@ class PowerOff(GCode):
 def Rectangle(w, h):
     return Comment("Rectangle") >> G00(X=0, Y=0) >> G01(X=0, Y=0, Z=0) >> G01(X=w, Y=0) >> G01(X=w, Y=h) >> G01(X=0, Y=h) >> G01(X=0, Y=0)
 
+class RectangleInnerContour(GCode):
+    def __init__(self, w, h):
+        self.w = w
+        self.h = h
+    def run(self, tr, state):
+        pd = state["pen_diameter"]
+        if pd > self.w or pd > self.h:
+            raise RuntimeError(f"Pen (d={pd}) too big for rectangle with w={self.w}, h={self.h}")
+        return Rectangle(self.w - pd, self.h - pd).run(tr, state)
+
+# step : length of each line segment making the circle
 def Circle(d, step=0.01):
     res = (
         Comment("Circle")
@@ -159,15 +175,23 @@ def Circle(d, step=0.01):
     res >> G01(X = d/2, Y = 0)
     return res
 
+class CircleInnerContour(GCode):
+    def __init__(self, d, step = 0.01):
+        self.d = d
+        self.step = step
+
+    def run(self, tr, state):
+        pd = state["pen_diameter"]
+        if pd > self.d:
+            raise RuntimeError(f"Pen (d={pd}) too big for circle with d={self.d}")
+        return Circle(self.d - pd, self.step).run(tr, state)
 
 if __name__ == "__main__":
     op = (
       G21()
       >> G92(X=0, Y=0, Z=0)
       >> G00(X=0, Y=0, Z=5)
-      >> (G01(X=10, Y=0, Z=0, F=500)
-          .translate((5, 5))
-          .rotate(math.radians(45)))
+      >> G01(X=10, Y=0, Z=0, F=500).translate((5, 5)).rotate(math.radians(45))
       >> ZSafe()
       >> Tone()
       >> (Rectangle(45, 53).translate((10, 5)).rotate(math.radians(45)))

@@ -3,68 +3,33 @@
 import sys
 import math
 from pcbnew import *
+from gcode import *
+
+if len(sys.argv) < 2:
+    print(f"usage: {sys.argv[0]} file.kicad_pcb", file=sys.stderr)
+    sys.exit(1)
 
 scale = 1000000 # conversion in micrometers (unit used by kicad)
 
 layer = "F.Cu"
 
-z_safe = 5
-feed_rate = 500.0
-pen_diameter = 0.4
+state = {"pos" : (0, 0, 0), "pen_diameter": 0.4, "feed_rate": 500, "z_safe": 5}
 
+gcode = Comment(f"Layer: {layer}") >> G21() >> G92(X=0, Y=0, Z=0) >> ZSafe()
 
-
-gcode = f"""
-G21
-G92 X0 Y0 Z0
-
-G00 Z{z_safe:.3f}
-"""
-
-if len(sys.argv) < 2:
-    print(f"usage: {sys.argv[0]} file.kicad_pcb", file=sys.stderr)
-    sys.exit(1)
 
 board = LoadBoard(sys.argv[1])
 for track in board.GetTracks():
     xs, ys = track.GetStart()
     xe, ye = track.GetEnd()
     if track.GetLayerName() == layer:
-        if pen_diameter != track.GetWidth()/scale:
-            print(f"Warning: pen diameter different from track width: {pen_diameter} <--> {track.GetWidth()/scale}", file=sys.stderr)
-        gcode += f"G00 X{xs/scale:.3f} Y{ys/scale:.3f}\nG01 Z0 F{feed_rate:.3f}\n"
-        gcode += f"G01 X{xe/scale:.3f} Y{ye/scale:.3f} F{feed_rate:.3f}\n"
-        gcode += f"G00 Z{z_safe:.3f}\n"
-    
-
-
-gcode += "( PADS )\n"
-
-# x, y : center
-# d : diameter
-# f : feed rate
-# step : length of each line segment making the circle
-def circle(x, y, d, f, step = 0.1):
-    gcode = f"( circle )\nG00 X{x+d/2:.3f} Y{y:.3f}\nG01 Z0 F{f:.3f}\n"
-    n = math.floor(math.pi * d / step)
-    theta = 2 * step / d
-    for i in range(n):
-        px = x + d/2 * math.cos(i * theta)
-        py = y + d/2 * math.sin(i * theta)
-        gcode += f"G01 X{px:.3f} Y{py:.3f} F{f}\n"
-    gcode += f"G01 X{x+d/2:.3f} Y{y:.3f}\n"
-    return gcode
-
-def rectangle(xc, yc, sx, sy, angle, f):
-    gcode = "( rect )\n"
-    gcode += f"G00 X{xc + sx / 2 : .3f} Y{yc + sy / 2 : .3f}\n"
-    gcode += f"G01 Z0 F{f:.3f}\n"
-    gcode += f"G01 X{xc - sx / 2 : .3f} Y{yc + sy / 2 : .3f} F{f:.3f}\n"
-    gcode += f"G01 X{xc - sx / 2 : .3f} Y{yc - sy / 2 : .3f} F{f:.3f}\n"
-    gcode += f"G01 X{xc + sx / 2 : .3f} Y{yc - sy / 2 : .3f} F{f:.3f}\n"
-    gcode += f"G01 X{xc + sx / 2 : .3f} Y{yc + sy / 2 : .3f} F{f:.3f}\n"
-    gcode += "\n"
-    return gcode
+        #if pen_diameter != track.GetWidth()/scale:
+        #    print(f"Warning: pen diameter different from track width: {pen_diameter} <--> {track.GetWidth()/scale}", file=sys.stderr)
+        gcode >> G00(X = xs / scale, Y = ys / scale) >> G01(X = xs / scale, Y = ys / scale, Z = 0)
+        gcode >> G01(X = xe / scale, Y = ye / scale)
+        gcode >> ZSafe()
+        
+gcode >> Comment("PADS")
 
 for pad in board.GetPads():
     xc, yc = pad.GetCenter()
@@ -77,22 +42,24 @@ for pad in board.GetPads():
     orientation = pad.GetOrientationDegrees()
     #print(f"orientation = {orientation}")
     if shape == PAD_SHAPE_CIRCLE:
-        gcode += circle(xc, yc, sx - pen_diameter, feed_rate)
+        gcode >> CircleInnerContour(sx).translate((xc, yc))
     elif shape == PAD_SHAPE_RECT:
-        gcode += rectangle(xc, yc, sx - pen_diameter, sy - pen_diameter, 0, feed_rate)
+        gcode >> RectangleInnerContour(sx, sy).translate((-sx/2, -sy/2)).rotate(math.radians(orientation)).translate((xc, yc))
     elif shape == PAD_SHAPE_OVAL:
-        gcode += "( oval )\n"
+        gcode >> Comment("Oval")
         if sx == sy:
-            gcode += circle(xc, yc, sx - pen_diameter, feed_rate)
+            gcode >> CircleInnerContour(sx).translate((xc, yc))            
         else:
             print("Warning: real ovals not suported (yet)", file = sys.stderr)
     else:
         print("Warning: unknown pad shape", file=sys.stderr)
-        gcode += "( unknown pad shape )\n"
-    gcode += f"G00 Z{z_safe:.3f}\n\n"
+        Comment("unknown pad shape")
+    gcode >> ZSafe()
+
+gcode >> G00(X = 0, Y = 0) >> PowerOff()
 
 
-print(gcode)
+print(gcode.flip_y().translate((0, 45)).run(tr = lambda x: x, state = state))
 
 
 #for m in dir(board.GetPads()[0]):
