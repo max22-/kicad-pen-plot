@@ -174,7 +174,7 @@ def Circle(d, step=0.01):
     res >> G01(X = d/2, Y = 0, Z = 0)
     return res
 
-class CircleInnerContour(GCode):
+class CirclePadContour(GCode):
     def __init__(self, d, step = 0.01):
         self.d = d
         self.step = step

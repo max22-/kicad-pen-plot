@@ -42,13 +42,13 @@ for pad in board.GetPads():
     orientation = pad.GetOrientationDegrees()
     #print(f"orientation = {orientation}")
     if shape == PAD_SHAPE_CIRCLE:
-        gcode >> CircleInnerContour(sx).translate((xc, yc))
+        gcode >> CirclePadContour(sx).translate((xc, yc))
     elif shape == PAD_SHAPE_RECT:
         gcode >> RectanglePadContour(sx, sy).rotate(math.radians(orientation)).translate((xc, yc))
     elif shape == PAD_SHAPE_OVAL:
         gcode >> Comment("Oval")
         if sx == sy:
-            gcode >> CircleInnerContour(sx).translate((xc, yc))            
+            gcode >> CirclePadContour(sx).translate((xc, yc))            
         else:
             print("Warning: real ovals not suported (yet)", file = sys.stderr)
     else:
