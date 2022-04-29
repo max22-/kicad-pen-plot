@@ -44,7 +44,7 @@ for pad in board.GetPads():
     if shape == PAD_SHAPE_CIRCLE:
         gcode >> CircleInnerContour(sx).translate((xc, yc))
     elif shape == PAD_SHAPE_RECT:
-        gcode >> RectangleInnerContour(sx, sy).translate((-sx/2, -sy/2)).rotate(math.radians(orientation)).translate((xc, yc))
+        gcode >> RectanglePadContour(sx, sy).rotate(math.radians(orientation)).translate((xc, yc))
     elif shape == PAD_SHAPE_OVAL:
         gcode >> Comment("Oval")
         if sx == sy:

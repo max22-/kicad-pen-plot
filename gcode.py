@@ -48,20 +48,16 @@ class G21(GCode):
         return "G21"
     
 class G92(GCode):
-    def __init__(self, X=None, Y=None, Z=None):
-        if X is None and Y is None and Z is None:
-            raise RuntimeError("Please provide at least one argument for X, Y or Z")
+    def __init__(self, X, Y, Z):
         self.x = X
         self.y = Y
         self.z = Z
 
     def run(self, tr, state):
-        (x2, y2) = tr((self.x, self.y))
-        (_, _, z) = state["pos"]
-        state["pos"] = (x2, y2, z)
-        x_str = "" if self.x is None else f"X{x2:.3f} "
-        y_str = "" if self.y is None else f"Y{y2:.3f} "
-        z_str = "" if self.z is None else f"X{self.z:.3f} "
+        state["pos"] = (self.x, self.y, self.z)
+        x_str = f"X{self.x:.3f} "
+        y_str = f"Y{self.y:.3f} "
+        z_str = f"Z{self.z:.3f} "
         return f"G92 {x_str}{y_str}{z_str}"
 
 class Move(GCode):
@@ -77,9 +73,9 @@ class Move(GCode):
         z2 = self.z if self.z is not None else z1
         state["pos"] = (x2, y2, z2)
         
-        x_str = f"X{x2:.3f} " if x2 != x1 else ""
-        y_str = f"Y{y2:.3f} " if y2 != y1 else ""
-        z_str = f"Z{z2:.3f} " if z2 != z1 else ""
+        x_str = f"X{x2:.3f} " #if x2 != x1 else ""
+        y_str = f"Y{y2:.3f} " #if y2 != y1 else ""
+        z_str = f"Z{z2:.3f} " #if z2 != z1 else ""
         res = x_str + y_str + z_str
         return res
         
@@ -145,13 +141,16 @@ class DisableSteppers(GCode):
 
 class PowerOff(GCode):
     def run(self, tr, state):
-        return "M80"
+        return "M81"
                
 
 def Rectangle(w, h):
     return Comment("Rectangle") >> G00(X=0, Y=0) >> G01(X=0, Y=0, Z=0) >> G01(X=w, Y=0) >> G01(X=w, Y=h) >> G01(X=0, Y=h) >> G01(X=0, Y=0)
 
-class RectangleInnerContour(GCode):
+def CenteredRectangle(w, h):
+    return Rectangle(w, h).translate((-w/2, -h/2))
+
+class RectanglePadContour(GCode):
     def __init__(self, w, h):
         self.w = w
         self.h = h
@@ -159,20 +158,20 @@ class RectangleInnerContour(GCode):
         pd = state["pen_diameter"]
         if pd > self.w or pd > self.h:
             raise RuntimeError(f"Pen (d={pd}) too big for rectangle with w={self.w}, h={self.h}")
-        return Rectangle(self.w - pd, self.h - pd).run(tr, state)
+        return CenteredRectangle(self.w - pd, self.h - pd).run(tr, state)
 
 # step : length of each line segment making the circle
 def Circle(d, step=0.01):
     res = (
         Comment("Circle")
         >> G00(X = d/2, Y = 0)
-        >> G01(X = d/2, Y = 0)
+        >> G01(X = d/2, Y = 0, Z = 0)
     )
     n = math.floor(math.pi * d / step)
     theta = 2 * step / d
     for i in range(n):
-        res >> G01(X = d/2 * math.cos(i * theta), Y = d/2 * math.sin(i * theta))
-    res >> G01(X = d/2, Y = 0)
+        res >> G01(X = d/2 * math.cos(i * theta), Y = d/2 * math.sin(i * theta), Z = 0)
+    res >> G01(X = d/2, Y = 0, Z = 0)
     return res
 
 class CircleInnerContour(GCode):
